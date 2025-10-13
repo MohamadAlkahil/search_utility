@@ -92,7 +92,10 @@ fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, 
                 match entry {
                     Ok(entry) => {
                         if entry.file_type().is_file() {
-                            file_paths.insert(entry.path().display().to_string());
+                            let file_name = entry.file_name().to_str().unwrap_or("");
+                            if !file_name.starts_with(".") {
+                                file_paths.insert(entry.path().display().to_string());
+                            }
                         }
                     }
                     Err(_) => return Err(format!("Error: could not read directory {}", directory)),
@@ -133,14 +136,15 @@ fn main() {
 fn display_help() {
     println!(
         "Usage: grep [OPTIONS] <pattern> <files...>
-            Options:
-            -i                Case-insensitive search
-            -n                Print line numbers
-            -v                Invert match (exclude lines that match the pattern)
-            -r                Recursive directory search
-            -f                Print filenames
-            -c                Enable colored output
-            -h, --help        Show help information"
+
+        Options:
+        -i                Case-insensitive search
+        -n                Print line numbers
+        -v                Invert match (exclude lines that match the pattern)
+        -r                Recursive directory search
+        -f                Print filenames
+        -c                Enable colored output
+        -h, --help        Show help information"
     );
 }
 
