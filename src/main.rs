@@ -1,6 +1,7 @@
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
+use walkdir::WalkDir;
 
 //The Config Struct holds the data assocaited with the Command Line Argument
 struct Config {
@@ -63,8 +64,41 @@ impl Config {
             config.pattern = config.pattern.to_lowercase();
         }
         config.file_paths.extend_from_slice(&non_options[1..]);
+        if config.recursive_search{
+            config.file_paths=match recursively_find_all_files(&config.file_paths){
+                Ok(found_file_paths)=>found_file_paths,
+                Err(e)=> return Err(e),
+            }
+        }
         Ok(config)
     }
+}
+
+fn recursively_find_all_files(directories: &Vec<String>)->Result<Vec<String>, String>{
+    let mut file_paths = std::collections::HashSet::new();
+    for directory in directories{
+        let metadata = match fs::metadata(directory){
+            Ok(metadata)=>metadata,
+            Err(_)=>return Err(format!("Error: could not get metadata for: {}",directory)),
+        };
+        if metadata.is_file(){
+            file_paths.insert(directory.to_string());
+        }
+        else if metadata.is_dir(){
+            for entry in WalkDir::new(directory) {
+                match entry{
+                    Ok(entry)=>{
+                        if entry.file_type().is_file(){
+                            file_paths.insert(entry.path().display().to_string());
+                        }
+                    },
+                    Err(_)=> return Err(format!("Error: could not read directory {}",directory)),
+                }
+            }
+
+        }
+    }
+    Ok(file_paths.into_iter().collect())
 }
 
 fn main() {
