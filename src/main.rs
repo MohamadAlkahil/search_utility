@@ -52,6 +52,9 @@ impl Config {
                 }
             }
         }
+        if config.help{
+            return Ok(config);
+        }
 
         if non_options.is_empty() {
             return Err(String::from("Error: No pattern provided"));
