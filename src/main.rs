@@ -1,3 +1,4 @@
+use colored::Colorize;
 use std::env;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
@@ -64,38 +65,36 @@ impl Config {
             config.pattern = config.pattern.to_lowercase();
         }
         config.file_paths.extend_from_slice(&non_options[1..]);
-        if config.recursive_search{
-            config.file_paths=match recursively_find_all_files(&config.file_paths){
-                Ok(found_file_paths)=>found_file_paths,
-                Err(e)=> return Err(e),
+        if config.recursive_search {
+            config.file_paths = match recursively_find_all_files(&config.file_paths) {
+                Ok(found_file_paths) => found_file_paths,
+                Err(e) => return Err(e),
             }
         }
         Ok(config)
     }
 }
 
-fn recursively_find_all_files(directories: &Vec<String>)->Result<Vec<String>, String>{
+fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, String> {
     let mut file_paths = std::collections::HashSet::new();
-    for directory in directories{
-        let metadata = match fs::metadata(directory){
-            Ok(metadata)=>metadata,
-            Err(_)=>return Err(format!("Error: could not get metadata for: {}",directory)),
+    for directory in directories {
+        let metadata = match fs::metadata(directory) {
+            Ok(metadata) => metadata,
+            Err(_) => return Err(format!("Error: could not get metadata for: {}", directory)),
         };
-        if metadata.is_file(){
+        if metadata.is_file() {
             file_paths.insert(directory.to_string());
-        }
-        else if metadata.is_dir(){
+        } else if metadata.is_dir() {
             for entry in WalkDir::new(directory) {
-                match entry{
-                    Ok(entry)=>{
-                        if entry.file_type().is_file(){
+                match entry {
+                    Ok(entry) => {
+                        if entry.file_type().is_file() {
                             file_paths.insert(entry.path().display().to_string());
                         }
-                    },
-                    Err(_)=> return Err(format!("Error: could not read directory {}",directory)),
+                    }
+                    Err(_) => return Err(format!("Error: could not read directory {}", directory)),
                 }
             }
-
         }
     }
     Ok(file_paths.into_iter().collect())
@@ -153,10 +152,14 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     for (i, line_result) in buf_reader.lines().enumerate() {
         match line_result {
             Ok(line) => {
-                let pattern_found =
-                    pattern_in_line(config.case_insensitive, &line, &config.pattern);
+                let (pattern_found, display_line) = pattern_in_line(
+                    config.case_insensitive,
+                    config.colored_output,
+                    &line,
+                    &config.pattern,
+                );
                 if should_print(config.invert_match, pattern_found) {
-                    print_match(&config, &file_path, i + 1, &line)
+                    print_match(&config, &file_path, i + 1, &display_line)
                 }
             }
             Err(_) => return Err(format!("Could not read line {} from {}", i + 1, file_path)),
@@ -165,12 +168,38 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-fn pattern_in_line(case_insensitive: bool, line: &String, pattern: &String) -> bool {
+fn pattern_in_line(
+    case_insensitive: bool,
+    colored_output: bool,
+    line: &String,
+    pattern: &String,
+) -> (bool, String) {
     if case_insensitive {
-        line.to_lowercase().contains(pattern)
+        contains(&line.to_lowercase(), &line, pattern, colored_output)
     } else {
-        line.contains(pattern)
+        contains(&line, &line, pattern, colored_output)
     }
+}
+
+fn contains(
+    search_line: &String,
+    original_line: &String,
+    pattern: &String,
+    colored_output: bool,
+) -> (bool, String) {
+    let pattern_index_found = search_line.find(pattern);
+    if pattern_index_found.is_some() {
+        if !colored_output {
+            return (true, original_line.to_string());
+        } else {
+            let mut updated_line = original_line.to_string();
+            let i = pattern_index_found.unwrap();
+            let pattern_colorized = original_line[i..(i + pattern.len())].red().to_string();
+            updated_line.replace_range(i..(i + pattern.len()), &pattern_colorized[..]);
+            return (true, updated_line);
+        }
+    }
+    (false, original_line.to_string())
 }
 
 fn should_print(invert_match: bool, pattern_found: bool) -> bool {
