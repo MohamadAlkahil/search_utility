@@ -59,6 +59,9 @@ impl Config {
         }
         // ASSUMPTION: pattern will correctly be input ahead of file paths
         config.pattern = non_options[0].clone();
+        if config.case_insensitive {
+            config.pattern = config.pattern.to_lowercase();
+        }
         config.file_paths.extend_from_slice(&non_options[1..]);
         Ok(config)
     }
@@ -116,18 +119,42 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     for (i, line_result) in buf_reader.lines().enumerate() {
         match line_result {
             Ok(line) => {
-                if line.contains(&config.pattern) {
-                    if config.print_filenames {
-                        print!("{}: ", &file_path);
-                    }
-                    if config.print_line_numbers {
-                        print!("{}: ", i + 1);
-                    }
-                    println!("{}", line);
+                let pattern_found =
+                    pattern_in_line(config.case_insensitive, &line, &config.pattern);
+                if should_print(config.invert_match, pattern_found) {
+                    print_match(&config, &file_path, i + 1, &line)
                 }
             }
             Err(_) => return Err(format!("Could not read line {} from {}", i + 1, file_path)),
         }
     }
     Ok(())
+}
+
+fn pattern_in_line(case_insensitive: bool, line: &String, pattern: &String) -> bool {
+    if case_insensitive {
+        line.to_lowercase().contains(pattern)
+    } else {
+        line.contains(pattern)
+    }
+}
+
+fn should_print(invert_match: bool, pattern_found: bool) -> bool {
+    if invert_match {
+        !pattern_found
+    } else {
+        pattern_found
+    }
+}
+
+fn print_match(config: &Config, file_path: &String, line_number: usize, line: &String) {
+    let mut output_list = Vec::new();
+    if config.print_filenames {
+        output_list.push(file_path.to_string());
+    }
+    if config.print_line_numbers {
+        output_list.push(line_number.to_string());
+    }
+    output_list.push(line.to_string());
+    println!("{}", output_list.join(": "));
 }
