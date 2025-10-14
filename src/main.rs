@@ -79,14 +79,14 @@ impl Config {
 }
 
 fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, String> {
-    let mut file_paths = std::collections::HashSet::new();
+    let mut file_paths = Vec::new();
     for directory in directories {
         let metadata = match fs::metadata(directory) {
             Ok(metadata) => metadata,
             Err(_) => return Err(format!("Error: could not get metadata for: {}", directory)),
         };
         if metadata.is_file() {
-            file_paths.insert(directory.to_string());
+            file_paths.push(directory.to_string());
         } else if metadata.is_dir() {
             for entry in WalkDir::new(directory) {
                 match entry {
@@ -94,7 +94,7 @@ fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, 
                         if entry.file_type().is_file() {
                             let file_name = entry.file_name().to_str().unwrap_or("");
                             if !file_name.starts_with(".") {
-                                file_paths.insert(entry.path().display().to_string());
+                                file_paths.push(entry.path().display().to_string());
                             }
                         }
                     }
@@ -103,9 +103,7 @@ fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, 
             }
         }
     }
-    let mut result: Vec<String> =file_paths.into_iter().collect();
-    result.sort();
-    Ok(result)
+    Ok(file_paths)
 }
 
 fn main() {
