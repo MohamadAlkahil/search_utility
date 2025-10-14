@@ -103,7 +103,9 @@ fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, 
             }
         }
     }
-    Ok(file_paths.into_iter().collect())
+    let mut result: Vec<String> =file_paths.into_iter().collect();
+    result.sort();
+    Ok(result)
 }
 
 fn main() {
