@@ -1,4 +1,5 @@
 use colored::Colorize;
+use regex::{Captures, Regex, RegexBuilder};
 use std::env;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
@@ -52,7 +53,7 @@ impl Config {
                 }
             }
         }
-        if config.help{
+        if config.help {
             return Ok(config);
         }
 
@@ -62,11 +63,8 @@ impl Config {
         if non_options.len() < 2 {
             return Err(String::from("Error: No file paths provided"));
         }
-        // ASSUMPTION: pattern will correctly be input ahead of file paths
+        // ASSUMPTION: pattern will not be empty and will be correctly be input ahead of file paths
         config.pattern = non_options[0].clone();
-        if config.case_insensitive {
-            config.pattern = config.pattern.to_lowercase();
-        }
         config.file_paths.extend_from_slice(&non_options[1..]);
         if config.recursive_search {
             config.file_paths = match recursively_find_all_files(&config.file_paths) {
@@ -134,7 +132,8 @@ fn main() {
 }
 
 fn display_help() {
-    println!("Usage: grep [OPTIONS] <pattern> <files...>
+    println!(
+        "Usage: grep [OPTIONS] <pattern> <files...>
 
 Options:
 -i                Case-insensitive search
@@ -154,16 +153,24 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     };
     //buffer used to read a single line from the file at a time
     let buf_reader = BufReader::new(f);
+    //regex created to try to find matches within a line
+    //escapes all regular expression meta characters in pattern
+    //case insensitity passed from config struct
+    //unicode enabled to esnure valid UTF-8 matches
+    let re = match RegexBuilder::new(&regex::escape(&config.pattern))
+        .case_insensitive(config.case_insensitive)
+        .unicode(true)
+        .build()
+    {
+        Ok(re) => re,
+        Err(_) => return Err(format!("Could not create regex builder for pattern")),
+    };
     //go line by line and if no error is hit then prin the line and the associated data based on the config instance
     for (i, line_result) in buf_reader.lines().enumerate() {
         match line_result {
             Ok(line) => {
-                let (pattern_found, display_line) = pattern_in_line(
-                    config.case_insensitive,
-                    config.colored_output,
-                    &line,
-                    &config.pattern,
-                );
+                let (pattern_found, display_line) =
+                    pattern_in_line(&re, config.colored_output, &line);
                 if should_print(config.invert_match, pattern_found) {
                     print_match(&config, &file_path, i + 1, &display_line)
                 }
@@ -174,38 +181,23 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-fn pattern_in_line(
-    case_insensitive: bool,
-    colored_output: bool,
-    line: &String,
-    pattern: &String,
-) -> (bool, String) {
-    if case_insensitive {
-        contains(&line.to_lowercase(), &line, pattern, colored_output)
-    } else {
-        contains(&line, &line, pattern, colored_output)
+fn pattern_in_line(re: &Regex, colored_output: bool, line: &String) -> (bool, String) {
+    // no match found so return as is
+    if !re.is_match(line) {
+        return (false, line.to_string());
     }
-}
+    //match found but not trying to color so return as is
+    if !colored_output {
+        return (true, line.to_string());
+    }
+    //match found but color needed
 
-fn contains(
-    search_line: &String,
-    original_line: &String,
-    pattern: &String,
-    colored_output: bool,
-) -> (bool, String) {
-    let pattern_index_found = search_line.find(pattern);
-    if pattern_index_found.is_some() {
-        if !colored_output {
-            return (true, original_line.to_string());
-        } else {
-            let mut updated_line = original_line.to_string();
-            let i = pattern_index_found.unwrap();
-            let pattern_colorized = original_line[i..(i + pattern.len())].red().to_string();
-            updated_line.replace_range(i..(i + pattern.len()), &pattern_colorized[..]);
-            return (true, updated_line);
-        }
-    }
-    (false, original_line.to_string())
+    //caps[0] will hold exact matches from the line
+    //we use colorize crate to update color to red
+    let replacement = |caps: &Captures| caps[0].red().to_string();
+    //replace all non-overlapping matches in the line with the replacement
+    let colored_line = re.replace_all(line, &replacement);
+    (true, colored_line.to_string())
 }
 
 fn should_print(invert_match: bool, pattern_found: bool) -> bool {
