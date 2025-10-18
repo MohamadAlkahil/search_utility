@@ -18,6 +18,7 @@ struct Config {
     help: bool,
 }
 
+
 impl Config {
     // essentially the constructor for the Config struct
     fn new(args: &Vec<String>) -> Result<Self, String> {
@@ -66,6 +67,7 @@ impl Config {
         // ASSUMPTION: pattern will not be empty and will be correctly be input ahead of file paths
         config.pattern = non_options[0].clone();
         config.file_paths.extend_from_slice(&non_options[1..]);
+        // go through and find all file pths if recursive_search is set
         if config.recursive_search {
             config.file_paths = match recursively_find_all_files(&config.file_paths) {
                 Ok(found_file_paths) => found_file_paths,
@@ -76,15 +78,28 @@ impl Config {
     }
 }
 
+/*
+Breif Explanation: Finds all files in given directory.
+
+Parameters: 
+    directories: &Vec<String> - directory of all file paths to search.
+
+Returns: 
+    Ok(Vec<String>) - all files to be searched for pattern.
+    Err(String) - Error mesage if recursion fails.
+*/
 fn recursively_find_all_files(directories: &Vec<String>) -> Result<Vec<String>, String> {
     let mut file_paths = Vec::new();
     for directory in directories {
+        // get the metadata to see if file is actually a folder or not
         let metadata = match fs::metadata(directory) {
             Ok(metadata) => metadata,
             Err(_) => return Err(format!("Error: could not get metadata for: {}", directory)),
         };
+        // if it is a file then push to the entire filepath to vector
         if metadata.is_file() {
             file_paths.push(directory.to_string());
+        // if it is actually a directory walk through directory and push all files that are not hidden to the vector
         } else if metadata.is_dir() {
             for entry in WalkDir::new(directory) {
                 match entry {
@@ -120,6 +135,7 @@ fn main() {
         display_help();
         return;
     }
+    // go through all file paths and search through the file to find matches
     for file_path in &config_set.file_paths {
         match search_file(&file_path, &config_set) {
             Ok(_) => (),
@@ -146,6 +162,17 @@ Options:
     );
 }
 
+/*
+Breif Explanation: Searches for pattern in a given file.
+
+Parameters: 
+    file_path: &String - the file path for a given file.
+    config: &Config - instance of a config struct that holds search options.    
+
+Returns: 
+    Ok(()) - search done.
+    Err(String) - Error mesage if searching a file fails.
+*/
 fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     let f = match File::open(file_path) {
         Ok(file) => file,
@@ -181,6 +208,19 @@ fn search_file(file_path: &String, config: &Config) -> Result<(), String> {
     Ok(())
 }
 
+/*
+Breif Explanation: Searches for pattern in a given line.
+
+Parameters: 
+    re: &Regex - the regex pattern.
+    colored_output: bool - the option set if colored output is selected in search configuration.
+    line: &String - the line to be searched.    
+
+Returns: 
+   (pattern_found: bool, display_line: &String):
+        pattern_found - holds if pattern was found
+        display_line - holds the line that was searched and if colored_output was selected then the matched pattern is replaced for red version.
+*/
 fn pattern_in_line(re: &Regex, colored_output: bool, line: &String) -> (bool, String) {
     // no match found so return as is
     if !re.is_match(line) {
@@ -200,6 +240,16 @@ fn pattern_in_line(re: &Regex, colored_output: bool, line: &String) -> (bool, St
     (true, colored_line.to_string())
 }
 
+/*
+Breif Explanation: Determines if a print is required based on if there was a match and inverted option was selected.
+
+Parameters: 
+    invert_match: bool - the option set if invert_match is selected in search configuration.
+    pattern_found: bool - was the pattern found in the given line.
+
+Returns: 
+   true if line should be printed and false otherwise.
+*/
 fn should_print(invert_match: bool, pattern_found: bool) -> bool {
     if invert_match {
         !pattern_found
@@ -208,6 +258,17 @@ fn should_print(invert_match: bool, pattern_found: bool) -> bool {
     }
 }
 
+/*
+Breif Explanation: prints matched line and associated data.
+
+Parameters: 
+    config: &Config - instance of a config struct that holds search options.    
+    file_path: &String - the file path for the associated file.
+    line_number: usize - the associated line number in the file for the line.
+    line: &String - the line to be printed.
+
+Returns: NA
+*/
 fn print_match(config: &Config, file_path: &String, line_number: usize, line: &String) {
     let mut output_list = Vec::new();
     if config.print_filenames {
